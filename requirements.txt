@@ -1,0 +1,5 @@
+pynostr~=0.6.2
+requests~=2.31.0
+websocket-client~=1.7.0
+loguru~=0.7.2
+requests
