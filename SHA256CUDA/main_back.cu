@@ -6,7 +6,6 @@
 #include <thread>
 #include <iomanip>
 #include <string>
-#include <sstream>
 #include <cassert>
 #include <cstring>
 
@@ -123,6 +122,33 @@ __device__ bool checkZeroPadding(unsigned char* sha, size_t shaLen) {
     return leadingZeroes == 21;
 }
 
+// 检查前导0
+//__device__ bool checkZeroPadding(unsigned char* sha, uint8_t difficulty) {
+//
+//	bool isOdd = difficulty % 2 != 0;
+//	uint8_t max = (difficulty / 2) + 1;
+//
+//	/*
+//		Odd : 00 00 01 need to check 0 -> 2
+//		Even : 00 00 00 1 need to check 0 -> 3
+//		odd : 5 / 2 = 2 => 2 + 1 = 3
+//		even : 6 / 2 = 3 => 3 + 1 = 4
+//	*/
+//	for (uint8_t cur_byte = 0; cur_byte < max; ++cur_byte) {
+//		uint8_t b = sha[cur_byte];
+//		if (cur_byte < max - 1) { // Before the last byte should be all zero
+//			if(b != 0) return false;
+//		}else if (isOdd) {
+//			if (b > 0x0F || b == 0) return false;
+//		}
+//		else if (b <= 0x0f) return false;
+//
+//	}
+//
+//	return true;
+//
+//}
+
 // nonce转str
 __device__ uint8_t nonce_to_str(uint64_t nonce, unsigned char* out) {
 	uint64_t result = nonce;
@@ -199,12 +225,12 @@ void pre_sha256() {
 }
 
 // 打印16进制hash值
-//void print_hash(const unsigned char* sha256) {
-//	for (uint8_t i = 0; i < 32; ++i) {
-//		std::cout << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(sha256[i]);
-//	}
-//	std::cout << std::dec << std::endl;
-//}
+void print_hash(const unsigned char* sha256) {
+	for (uint8_t i = 0; i < 32; ++i) {
+		std::cout << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(sha256[i]);
+	}
+	std::cout << std::dec << std::endl;
+}
 
 // 打印当前状态
 void print_state() {
@@ -215,21 +241,23 @@ void print_state() {
 	if (last_show_interval.count() > SHOW_INTERVAL_MS) {
 		std::chrono::duration<double, std::milli> span = t2 - t_last_updated;
 		float ratio = span.count() / 1000;
-//		std::cout << span.count() << " " << nonce - last_nonce_since_update << std::endl;
+		std::cout << span.count() << " " << nonce - last_nonce_since_update << std::endl;
 
-//		std::cout << std::fixed << static_cast<uint64_t>((nonce - last_nonce_since_update) / ratio) << " hash(es)/s" << std::endl;
+		std::cout << std::fixed << static_cast<uint64_t>((nonce - last_nonce_since_update) / ratio) << " hash(es)/s" << std::endl;
 
 
-//		std::cout << std::fixed << "Nonce : " << nonce << std::endl;
+		std::cout << std::fixed << "Nonce : " << nonce << std::endl;
 
 		t_last_updated = std::chrono::high_resolution_clock::now();
 		last_nonce_since_update = nonce;
 	}
 
 	if (*g_found) {
-//		std::cout << g_out << std::endl;
+		std::cout << g_out << std::endl;
+		print_hash(g_hash_out);
 	}
 }
+
 
 void init(const std::string& in) {
     cudaSetDevice(0);
@@ -252,7 +280,7 @@ void init(const std::string& in) {
 }
 
 // SHA-256处理函数
-std::string process_sha256(const std::string& in, uint64_t user_nonce) {
+void process_sha256(const std::string& in, uint64_t user_nonce) {
     nonce += user_nonce;
     last_nonce_since_update += user_nonce;
 
@@ -271,12 +299,6 @@ std::string process_sha256(const std::string& in, uint64_t user_nonce) {
 
         print_state();
     }
-
-    std::stringstream ss;
-    for (uint8_t i = 0; i < 32; ++i) {
-        ss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(g_hash_out[i]);
-    }
-    return ss.str();
 }
 
 // 关闭函数
@@ -288,24 +310,96 @@ void close() {
     cudaDeviceReset();
 }
 
-int main(int argc, char** argv) {
-    std::string in = argv[1];
-    uint64_t user_nonce;
-
-    try {
-        user_nonce = std::stoull(argv[2]);
-    } catch (const std::invalid_argument& ia) {
-        std::cerr << "Invalid argument: " << argv[2] << " is not a number." << std::endl;
-        return 1;
-    } catch (const std::out_of_range& oor) {
-        std::cerr << "Out of Range error: " << argv[2] << " is too large." << std::endl;
-        return 1;
-    }
-
+int main() {
+    uint64_t user_nonce = 12756;
+    std::string in = "["
+     "  0,"
+     "  \"0b79a9aca45603f873948c6682ec6373dd6997e69854c0a09df948a1b454bfcb\","
+     "  1704758771,"
+     "  1,"
+     "  '[[\"p\",\"9be107b0d7218c67b4954ee3e6bd9e4dba06ef937a93f684e42f730a0c3d053c\"],[\"e\",\"51ed7939a984edee863bfbb2e66fdc80436b000a8ddca442d83e6a2bf1636a95\",\"wss://relay.noscription.org/\",\"root\"],[\"e\",\"00000647c189220f934fd2b72d345d3d109a75654f0562b77a426fb206150ce1\",\"wss://relay.noscription.org/\",\"reply\"],[\"seq_witness\",\"168501742\",\"0x0adfc5ea0b8041d528d47cbb15a85cb959d3f6dbb7b06847277a91a0eac0ff82\"],[\"nonce\",\"12756\",\"21\"]]',"
+     "  \"{\\\"p\\\":\\\"nrc-20\\\",\\\"op\\\":\\\"mint\\\",\\\"tick\\\":\\\"noss\\\",\\\"amt\\\":\\\"10\\\"}\""
+     "]";
     init(in);
-    std::string hash_hex = process_sha256(in, user_nonce);
-    std::cout << hash_hex << std::endl;
+    process_sha256(in, user_nonce);
     close();
 
     return 0;
 }
+
+//int main() {
+//
+//	cudaSetDevice(0);
+//	cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
+//
+//	t_last_updated = std::chrono::high_resolution_clock::now();
+//
+//	std::string in;
+//
+//	std::cout << "Enter a message : ";
+//	getline(std::cin, in);
+//    in = "["
+//     "  0,"
+//     "  \"0b79a9aca45603f873948c6682ec6373dd6997e69854c0a09df948a1b454bfcb\","
+//     "  1704758771,"
+//     "  1,"
+//     "  '[[\"p\",\"9be107b0d7218c67b4954ee3e6bd9e4dba06ef937a93f684e42f730a0c3d053c\"],[\"e\",\"51ed7939a984edee863bfbb2e66fdc80436b000a8ddca442d83e6a2bf1636a95\",\"wss://relay.noscription.org/\",\"root\"],[\"e\",\"00000647c189220f934fd2b72d345d3d109a75654f0562b77a426fb206150ce1\",\"wss://relay.noscription.org/\",\"reply\"],[\"seq_witness\",\"168501742\",\"0x0adfc5ea0b8041d528d47cbb15a85cb959d3f6dbb7b06847277a91a0eac0ff82\"],[\"nonce\",\"12756\",\"21\"]]',"
+//     "  \"{\\\"p\\\":\\\"nrc-20\\\",\\\"op\\\":\\\"mint\\\",\\\"tick\\\":\\\"noss\\\",\\\"amt\\\":\\\"10\\\"}\""
+//     "]";
+//;
+//    user_nonce = 12756;
+//	std::cout << "Nonce : ";
+//	std::cin >> user_nonce;
+//
+//写死为21
+//	std::cout << "Difficulty : ";
+//	std::cin >> difficulty;
+//	std::cout << std::endl;
+//
+//
+//	const size_t input_size = in.size();  // 输入字符串的长度
+//
+//	// 设备的输入字符串
+//	char *d_in = nullptr;
+//
+//	// 创建设备的输入字符串
+//	cudaMalloc(&d_in, input_size + 1);
+//	cudaMemcpy(d_in, in.c_str(), input_size + 1, cudaMemcpyHostToDevice);
+//
+//	cudaMallocManaged(&g_out, input_size + 32 + 1);
+//	cudaMallocManaged(&g_hash_out, 32);
+//	cudaMallocManaged(&g_found, sizeof(int));
+//	*g_found = 0;  // 初始化结束标志
+//
+//	nonce += user_nonce;
+//	last_nonce_since_update += user_nonce;
+//
+//	pre_sha256();
+// 共享内存
+//	size_t dynamic_shared_size = (ceil((input_size + 1) / 8.f) * 8) + (64 * BLOCK_SIZE);
+//	std::cout << "share memory: " << dynamic_shared_size / 1024 << "KB" << std::endl;
+//
+//	while (!*g_found) {
+//		sha256_kernel << < NUMBLOCKS, BLOCK_SIZE, dynamic_shared_size >> > (g_out, g_hash_out, g_found, d_in, input_size, difficulty, nonce);
+//
+//		cudaError_t err = cudaDeviceSynchronize();
+//		if (err != cudaSuccess) {
+//			throw std::runtime_error("设备异常");
+//		}
+//
+//		nonce += NUMBLOCKS * BLOCK_SIZE;
+//
+//		print_state();
+//	}
+//
+//
+//	cudaFree(g_out);
+//	cudaFree(g_hash_out);
+//	cudaFree(g_found);
+//
+//	cudaFree(d_in);
+//
+//	cudaDeviceReset();
+//
+//	return 0;
+//}

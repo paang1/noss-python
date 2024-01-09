@@ -6,8 +6,7 @@ from loguru import logger
 
 def get_init_hex() -> str:
     init_pattern = r'init\(\"([a-z0-9]+)\"\)'
-    res = requests.get("https://noscription.org/_next/static/chunks/pages/index-c5c61640b880a683.js")
-
+    res = requests.get("https://noscription.org/_next/static/chunks/pages/index-de050dd5118edfec.js")
     match = re.search(init_pattern, res.text)
     if match:
         logger.success("成功找到init hex")

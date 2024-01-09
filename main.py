@@ -10,6 +10,7 @@ import websocket
 from loguru import logger
 import multiprocessing
 from pynostr.event import Event
+# from utils.cuda_envet_id import Event
 from pynostr.key import PrivateKey
 from utils.pow import PowEvent
 from utils.x_gorgon import get_init_hex, get_x_gorgon
@@ -17,8 +18,7 @@ from utils.x_gorgon import get_init_hex, get_x_gorgon
 event_id_path = "cache/event_id.txt"
 block_height_path = "cache/block_height.txt"
 seq_witness_path = "cache/seq_witness.txt"
-counter = 0
-max_counter = 2
+
 
 # 获取最新事件id
 def open_ws():
@@ -37,14 +37,14 @@ def open_ws():
 
     def on_error(ws, error):
         logger.error("中继服务器报错: {}".format(error))
-
-    ws = websocket.WebSocketApp("wss://report-worker-2.noscription.org/",
+    ws = websocket.WebSocketApp("wss://report-worker-ng.noscription.org",
                                 on_open=on_open,
                                 on_message=on_message,
                                 on_close=on_close,
                                 on_error=on_error,
                                 header={
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0',
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ('
+                                                  'KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0',
                                     'Sec-WebSocket-Version': '13',
                                     'Accept-Encoding': 'gzip, deflate, br',
                                     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
@@ -140,7 +140,10 @@ def post_event(e, init_hex=None, event_id=None):
     }
     while True:
         response = requests.post(url, headers=headers, data=e)
-        logger.success(f"挖掘成功 {e},\n\t提交结果 {response.status_code}")
+        if response.status_code == 429:
+            logger.warning(f"提交次数过多 被服务器拦截")
+        else:
+            logger.success(f"挖掘成功 {e},\n\t提交结果: {response.status_code}")
         if response.status_code == 200:
             break
         time.sleep(1)
@@ -165,13 +168,8 @@ def get_var(v):
 
 
 def mine_data_and_submit(identity_pk, init_hex=None):
-    global counter
-
     def nonce():
         return ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
-
-    def now():
-        return int(time.time())
 
     pub_key = identity_pk.public_key.hex()
     # 设置挖矿难度
@@ -188,18 +186,17 @@ def mine_data_and_submit(identity_pk, init_hex=None):
             ]
         )
         event_id, block_height, pre_addr = get_var(1), get_var(2), get_var(3)
-        e_copy.created_at = now()
+        e_copy.created_at = int(time.time())
         e_copy.tags.append(["e", event_id, "wss://relay.noscription.org/", "reply"])
         e_copy.tags.append(["seq_witness", block_height, pre_addr])
         e_copy.tags.append(["nonce", nonce(), "21"])
         while True:
             # 这里稍微修改了一下源码，有点蛋疼
-            e_test = e_copy
             e_copy = pe.mine(e_copy)
             if pe.calc_difficulty(e_copy) >= 21:
                 break
         # 还原被覆盖的参数 block_height
-        e_copy.created_at = now()
+        e_copy.created_at = int(time.time())
         sk = PrivateKey(bytes.fromhex(identity_pk.hex()))
         sig = sk.sign(bytes.fromhex(e_copy.id))
         e_copy.sig = sig.hex()
@@ -208,7 +205,6 @@ def mine_data_and_submit(identity_pk, init_hex=None):
         }
         # post_event(json.dumps(wrapped_data))
         post_event(e=json.dumps(wrapped_data), init_hex=init_hex, event_id=event_id)
-        counter += 1
         # logger.info(f"{threading.current_thread()} 挖掘中...")
 
 
@@ -235,7 +231,7 @@ def check_env():
 
 
 if __name__ == "__main__":
-    thread_num = 1
+    thread_num = 8
     if len(sys.argv) < 1:
         logger.info(f'线程数量设置为: {sys.argv[1]}')
         thread_num = int(sys.argv[1])

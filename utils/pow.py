@@ -1,10 +1,12 @@
+import random
 import string
-import time, random
+import time
 from dataclasses import dataclass
 
 from pynostr.key import PrivateKey
-from pynostr.pow import Event
 
+from utils.cuda_envet_id import Event
+# from pynostr.event import Event
 
 BECH32_CHARS = '023456789acdefghjklmnpqrstuvwxyz'
 
@@ -69,13 +71,6 @@ class Pow:
             return self.count / self.duration
         else:
             return 0
-
-    def _stop_mining(self, count, max_count, duration, max_duration):
-        if max_count > 0 and count > max_count:
-            return True
-        elif max_duration > 0 and duration > max_duration:
-            return True
-        return False
 
     def estimate_hashrate(self, n_guesses: int = 1e4, **operation_kwargs):
         if self.operation is None:
@@ -153,10 +148,8 @@ class PowEvent(Pow):
                 and int(event.tags[tag_pos][2]) >= self.difficulty
         )
 
-    def mine(self, event: Event, max_count: int = 0, max_duration: int = 0) -> Event:
+    def mine(self, event: Event) -> Event:
         start = time.perf_counter()
-        count = 0
-        duration = 0
 
         tag_pos = self.get_nonce_tag_pos(event)
 
@@ -171,18 +164,13 @@ class PowEvent(Pow):
 
         num_leading_zero_bits, event_pow = self.operation(event=event)
         num_leading_zero_bits_pow = num_leading_zero_bits
-        while num_leading_zero_bits < self.difficulty and (
-                not self._stop_mining(count, max_count, duration, max_duration)
-        ):
+        while num_leading_zero_bits < self.difficulty:
             # 这里的源码需要改一下，略微蛋疼
             event.tags[tag_pos][1] = ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
             num_leading_zero_bits, event = self.operation(event=event)
             if num_leading_zero_bits > num_leading_zero_bits_pow:
                 event_pow = event
                 num_leading_zero_bits_pow = num_leading_zero_bits
-            count += 1
-            self.count += 1
-            duration = time.perf_counter() - start
         end = time.perf_counter()
         self.duration += end - start
         if len(self.results) == 0:
