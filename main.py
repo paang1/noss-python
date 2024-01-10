@@ -3,14 +3,15 @@ import math
 import random
 import sys
 
+import httpx
 import requests
 import string
 import time
 import websocket
 from loguru import logger
 import multiprocessing
-from pynostr.event import Event
-# from utils.cuda_envet_id import Event
+# from pynostr.event import Event
+from utils.cuda_envet_id import Event
 from pynostr.key import PrivateKey
 from utils.pow import PowEvent
 from utils.x_gorgon import get_init_hex, get_x_gorgon
@@ -28,27 +29,26 @@ def open_ws():
     def on_message(ws, msg):
         # 更新全局的event id到文件
         event_id = json.loads(msg)["eventId"]
-        # logger.info(f"更新event_id {event_id}")
+        # logger.debug(f"更新event_id {event_id}")
         with open(event_id_path, "w") as file:
             file.write(event_id)
 
-    def on_close(ws):
+    def on_close(ws, close_status_code, close_msg):
         logger.info("与中继服务器断开连接")
 
     def on_error(ws, error):
         logger.error("中继服务器报错: {}".format(error))
+
     ws = websocket.WebSocketApp("wss://report-worker-ng.noscription.org",
                                 on_open=on_open,
                                 on_message=on_message,
                                 on_close=on_close,
                                 on_error=on_error,
                                 header={
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ('
-                                                  'KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0',
-                                    'Sec-WebSocket-Version': '13',
-                                    'Accept-Encoding': 'gzip, deflate, br',
-                                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-                                    'Sec-WebSocket-Key': 'lzAOYPq7IZeg+yB9zfHSfw=='})
+                                    "Host": "report-worker-ng.noscription.org",
+                                    "Origin": "import websocket",
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                    })
 
     ws.run_forever()
 
@@ -124,28 +124,27 @@ def get_block_from_rpc():
 def post_event(e, init_hex=None, event_id=None):
     url = "https://api-worker.noscription.org/inscribe/postEvent"
     headers = {
-        "Accept": "application/json, text/plain, */*",
-        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
         "Content-Type": "application/json",
-        "Sec-Ch-Ua": "\"Not A(Brand\";v=\"99\", \"Microsoft Edge\";v=\"121\", \"Chromium\";v=\"121\"",
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": "\"Windows\"",
-        # "sec-fetch-dest": "empty",
-        # "sec-fetch-mode": "cors",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://noscription.org/",
-        # "sec-fetch-site": "same-site",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64 AppleWebKit/537.36 (KHTML, like Gecko Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+        "Sec-ch-ua": "\"Not A(Brand\";v=\"99\", \"Microsoft Edge\";v=\"121\", \"Chromium\";v=\"121\"",
+        "Sec-ch-ua-mobile": "?0",
+        "Sec-ch-ua-platform": "\"Windows\"",
+        "Sec-fetch-dest": "empty",
+        "Sec-fetch-mode": "cors",
+        "Sec-fetch-site": "same-site",
         "X-Gorgon": f"{get_x_gorgon(init_hex=init_hex, event_id=event_id)}"
     }
+    # with httpx.Client(http2=True) as client:
     while True:
-        response = requests.post(url, headers=headers, data=e)
+        # response = client.post(url, headers=headers, data=e)
+        response = requests.post(url=url, headers=headers, data=e)
         if response.status_code == 429:
-            logger.warning(f"提交次数过多 被服务器拦截")
-        else:
+            logger.warning("提交次数过多 被服务器拦截")
+        elif response.status_code == 200:
             logger.success(f"挖掘成功 {e},\n\t提交结果: {response.status_code}")
-        if response.status_code == 200:
             break
+        else:
+            logger.error(f"Event提交失败 状态码: {response.status_code}, 内容:{response.text}")
         time.sleep(1)
 
 
@@ -167,9 +166,10 @@ def get_var(v):
         return None
 
 
+# def mine_data_and_submit(identity_pk, proxy_list: list, init_hex=None):
 def mine_data_and_submit(identity_pk, init_hex=None):
     def nonce():
-        return ''.join(random.choices(string.ascii_lowercase + string.digits, k=13))
+        return ''.join(random.choices(string.ascii_lowercase + string.digits, k=18))
 
     pub_key = identity_pk.public_key.hex()
     # 设置挖矿难度
@@ -205,6 +205,7 @@ def mine_data_and_submit(identity_pk, init_hex=None):
         }
         # post_event(json.dumps(wrapped_data))
         post_event(e=json.dumps(wrapped_data), init_hex=init_hex, event_id=event_id)
+        # post_event(e=json.dumps(wrapped_data), proxy_list=proxy_list, init_hex=init_hex, event_id=event_id)
         # logger.info(f"{threading.current_thread()} 挖掘中...")
 
 
@@ -231,11 +232,14 @@ def check_env():
 
 
 if __name__ == "__main__":
+    # print("你正在使用Cloxl编写的免费GPU端 noss 脚本 本脚本免费 如果你是付费的 证明你被圈钱了")
+    # time.sleep(2)
     thread_num = 8
     if len(sys.argv) < 1:
         logger.info(f'线程数量设置为: {sys.argv[1]}')
         thread_num = int(sys.argv[1])
     process_list = []
+
     # 初始化init_hex
     init_hex = get_init_hex()
     # 初始化钱包
@@ -244,6 +248,7 @@ if __name__ == "__main__":
     identity_pk = PrivateKey.from_nsec(key)
     pub_key = identity_pk.public_key.hex()
     logger.info(f"pub key: {pub_key[:5]}***{pub_key[-3:]}")
+
     # 开启进程获取event_id的线程
     p1 = multiprocessing.Process(target=open_ws)
     # 开启获取最新区块高度的线程
@@ -254,9 +259,11 @@ if __name__ == "__main__":
     process_list.append(p2)
     # 检查环境
     check_env()
+
     try:
         for i in range(thread_num):
             process = multiprocessing.Process(target=mine_data_and_submit,
+                                              # args=(identity_pk, proxy_list, init_hex))
                                               args=(identity_pk, init_hex))
             process.start()
             logger.info(f"启动进程 {process.pid} 并开始挖矿")

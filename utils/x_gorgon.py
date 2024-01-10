@@ -6,7 +6,7 @@ from loguru import logger
 
 def get_init_hex() -> str:
     init_pattern = r'init\(\"([a-z0-9]+)\"\)'
-    res = requests.get("https://noscription.org/_next/static/chunks/pages/index-de050dd5118edfec.js")
+    res = requests.get("https://noscription.org/_next/static/chunks/pages/index-2b8a738e2190676c.js")
     match = re.search(init_pattern, res.text)
     if match:
         logger.success("成功找到init hex")
@@ -21,7 +21,9 @@ def get_x_gorgon(init_hex: str, event_id: str) -> str:
 
     # 获取命令的输出和错误信息
     output, error = process.communicate()
-    if error:
-        logger.error(f"获取X-Gorgon失败\n\t状态码:{process.returncode}\n\t错误信息:{error.decode()}")
 
-    return output.decode().strip()
+    if error:
+        error_message = error.decode('utf-8', 'replace')  # 使用 'replace' 选项
+        logger.error(f"获取X-Gorgon失败\n\t状态码:{process.returncode}\n\t错误信息:{error_message}")
+
+    return output.decode('utf-8', 'ignore').strip()
