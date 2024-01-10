@@ -26,13 +26,16 @@
 ```
 如果输出的字符串以 `00000` 开头，表示程序运行正常。
 ![示例输出.png](https://github.com/Cloxl/noss-python/blob/main/docs/example.png)  
-接下来，打开 `key.txt` 文件，输入您的私钥，即可开始使用。
-
+接下来，打开 `key.txt` 文件，输入您的私钥输入下列命令安装环境并且运行程序  
+```bash
+pip install -r requirements.txt
+python main.py
+```
 ### 如果无法使用
 如果上述测试未通过，请按以下步骤操作：
 
 1. 确保已安装 C++ Build Tools。
-2. 进入 [SHA256CUDA](https://github.com/moffa13/SHA256CUDA) 项目目录。
+2. 进入 SHA256CUDA 文件夹
 3. 运行以下命令以编译CUDA程序，用于计算SHA256：
    ```bash
    nvcc -O2 -o hash main.cu
